@@ -7,6 +7,7 @@ import requests
 from concurrent import futures
 import signal
 import json
+from pathlib import Path
 
 import numpy as np
 import cartopy.crs as ccrs
@@ -20,67 +21,68 @@ import metpy.calc as mpcalc
 from scipy.ndimage import gaussian_filter
 import pygrib as grib
 
-from . import exit_program, handler_sigint
+if __name__ == "__main__":
+    print("please execute main.py")
+    sys.exit()
+
+from .exit_program import *
+from .file_is_on_server import *
 
 
 def gpv_downloader():
+    print("#####GPV Downloader#####")
     # SIGINTシグナルを受け取る
     signal.signal(signal.SIGINT, handler_sigint)
-    print('___GPV Downloader___')
-    # ファイルの保存場所とダウンロード開始日時の情報を取得
-    GpvDownloader.get_settings()
+    # 設定ファイルの読み込み
+    settings = None
+    with open("settings_gpv.json") as fp:
+        settings = json.load(fp)
     # ファイルの保存場所に移動
-    GpvDownloader.move_path()
-    # フォルダを作成
-    GpvDownloader.make_dirs()
-    # grib2ファイルをダウンロード
-    GpvDownloader.download_grib2()
-    # ジョブリスト
-    job_list = []
-    # クラスリスト
-    gpv_list = []
-    # 開始日時
-    time = datetime.datetime(GpvDownloader.time_start.year, GpvDownloader.time_start.month, GpvDownloader.time_start.day, 00, 00)
-    print("開始日時: {0}".format(time))
-    with futures.ProcessPoolExecutor(max_workers=12) as executor:
-        # 実行
-        while time.date() < GpvDownloader.time_end:
-            job_list.append(executor.submit(exec_gpv, time=time, gpv_list=gpv_list))
-            time += datetime.timedelta(hours=6)
-        _ = futures.as_completed(fs=job_list)
-    # 設定ファイルの更新
-    GpvDownloader.update_settings()
-    # 一時ファイルの削除
-    for i in gpv_list:
-        del i
-        tm.sleep(1)
-    # GpvDownloader.rm_tmp()
-    exit_program('正常に完了しました')
+    try:
+        # ディレクトリが存在しなければ作成
+        os.makedirs(settings["path"], exist_ok=True)
+        os.chdir(settings["path"])
+    except FileNotFoundError:
+        exit_program(f'{settings["path"]}は存在しないパスです.')
+    # ディレクトリが存在しなければ作成
+    dir_list = ['tmp', 'j300hw', 'j500ht', 'j500hv', 'j500t700td', 'j850ht', 'j850tw700vv', 'j850eptw']
+    for dirs in dir_list:
+        os.makedirs(dirs, exist_ok=True)
+    # ダウンロード開始時刻の設定
+    try:
+        time_start = datetime.datetime(settings["time_start"]["year"], settings["time_start"]["month"], settings["time_start"]["day"], 0, 0) - datetime.timedelta(hours=6 * (GPVDownloader.time_diff // 6))
+        time_start_jp = time_start + datetime.timedelta(hours=GPVDownloader.time_diff)
+    except Exception as e:
+        exit_program(e, sys.exc_info())
+    print(f'ダウンロード開始日時: {time_start_jp}')
+    # ダウンロード終了時刻は一日前
+    time_end = datetime.date.today() - datetime.timedelta(days=1)
+    # ダウンロードと天気図作成
+    while time_start_jp.date() < time_end:
+        try:
+            t = GPVDownloader(time_start, settings["fig_x"], settings["fig_y"])
+            t.download_grib2()
+            t.make_map()
+        except Exception as e:
+            exit_program(e, sys.exc_info())
+        time_start += datetime.timedelta(hours=6)
+    # grib2ファイルの削除
+    if(settings["delete_tmp"]):
+        shutil.rmtree("tmp")
+    # 設定の更新
+    settings["time_start"]["year"] = time_start.year
+    settings["time_start"]["month"] = time_start.month
+    settings["time_start"]["day"] = time_start.day
+    os.chdir(os.path.join(Path(__file__).resolve().parent.parent))
+    with open("settings_gpv.json", "w") as fp:
+        json.dump(settings, fp)
+    print("#####完了#####")
 
 
-def exec_gpv(time, gpv_list):
-    gpv_cls = GpvDownloader(time)
-    gpv_list.append(gpv_cls)
-    gpv_cls.j_300_hw()
-    gpv_cls.j_500_ht()
-    gpv_cls.j_500_hv()
-    gpv_cls.j_500_t_700_dewp()
-    gpv_cls.j_850_ht()
-    gpv_cls.j_850_tw_700_vv()
-    gpv_cls.j_850_eptw()
-
-
-class GpvDownloader:
-    # 設定ファイルの場所
-    settings_file_path = os.path.join(os.path.dirname(__file__), 'gpv_settings.json')
-    # 設定ファイルに"ダウンロード開始日時"が書かれていなかった場合に何日前からダウンロードするか
-    days_duration = 7
-    # 保存場所
-    path = None
-    # ダウンロード開始日時
-    time_start = None
-    # ダウンロード終了日時
-    time_end = None
+class GPVDownloader:
+    ###################################################################
+    # クラス変数
+    ###################################################################
     # 時差
     time_diff = 9
     # 図の範囲(日本域)
@@ -97,127 +99,77 @@ class GpvDownloader:
     # 高度のシグマ
     height_sigma = 1.0
 
-    @classmethod
-    def get_settings(cls):  # 設定ファイルを読み込み，"データの保存場所"と"ダウンロード開始日時"を取得
-        settings = []
-        try:
-            # 設定ファイルを開く
-            with open(cls.settings_file_path, 'r') as f:
-                # 設定ファイルを行ごとに読み込んで改行文字を削除し，リストに格納
-                # 1行目は"データの保存場所"，2行目は"ダウンロード開始日時"
-                settings = [i.strip('\n') for i in f.readlines()]
+    def __init__(self, time_this, fig_x, fig_y):
+        # 時間
+        self.time_this = time_this
+        self.time_str1 = (time_this + datetime.timedelta(hours=self.time_diff)).strftime('%Y%m%d%H')
+        self.time_str2 = (time_this + datetime.timedelta(hours=self.time_diff)).strftime('%Y/%m/%d/%H')
+        # 解像度x,y
+        self.fig_x = fig_x
+        self.fig_y = fig_y
+        # ダウンロードするgrib2ファイルの保存先
+        self.path_grib2 = os.path.join('tmp', time_this.strftime('%Y%m%d%H'))
+        # grib2ファイル
+        self.grib2 = None
 
-        # 設定ファイルが見つからなかった場合
-        except FileNotFoundError:
-            # 設定ファイルを新規作成
-            with open(cls.settings_file_path, 'w') as f:
-                pass
+    def __del__(self):
+        # grib2ファイルを閉じる
+        self.grib2.close()
 
-        # 設定ファイルに何も書かれていなかった場合
-        if len(settings) == 0:
-            # メッセージを出力して終了
-            exit_program("\"データの保存場所\"が指定されていません．{0} を正しく設定してください．".format(cls.settings_file_path))
-
-        # "データの保存場所"を取得
-        cls.path = settings[0]
-
-        # "ダウンロード開始日時"を取得
-        try:
-            cls.time_start = datetime.datetime.strptime(settings[1], '%Y/%m/%d')
-
-        # "ダウンロード開始日時"が指定されていない，または正しくない場合
-        except (IndexError, ValueError):
-            # "ダウンロード開始日時"は"days_duration"日前から
-            cls.time_start = datetime.datetime.today() - datetime.timedelta(days=cls.days_duration)
-
-        print('保存先: {0}, ダウンロード開始日時: {1}'.format(cls.path, cls.time_start.strftime('%Y/%m/%d')))
-
-    @classmethod
-    def move_path(cls):  # "データの保存場所"に移動
-        try:
-            # "データの保存場所"が存在しない場合は，ディレクトリを作成
-            os.makedirs(cls.path, exist_ok=True)
-            # 移動
-            os.chdir(cls.path)
-
-        # "データの保存場所"が正しくない場合
-        except FileNotFoundError:
-            exit_program("\"データの保存場所\"が正しくありません．{0} を正しく設定してください．".format(cls.settings_file_path))
-
-    @classmethod
-    def download_grib2_sub(cls, time):  # grib2ファイルをダウンロード
-        # ファイル名
-        file_name = os.path.join('tmp', time.strftime('%Y%m%d%H'))
-
-        # すでにダウンロードしていたら
-        if os.path.exists(file_name):
-            return
-
-        # ダウンロード先URL
-        url_a = 'http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/' + time.strftime('%Y/%m/%d/')
-        url_b = 'Z__C_RJTD_' + time.strftime('%Y%m%d%H%M%S') + '_GSM_GPV_Rgl_FD0000_grib2.bin'
-        url = url_a + url_b
-
-        # ダウンロード
+    def download_grib2(self):  # grib2ファイルのダウンロード
+        # ダウンロード済みの場合は何もしない
+        if(os.path.exists(self.path_grib2)): return
+        # ダウンロード先URI
+        uri_grib2 = f'http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/{self.time_this.strftime("%Y/%m/%d")}/Z__C_RJTD_{self.time_this.strftime("%Y%m%d%H%M%S")}_GSM_GPV_Rgl_FD0000_grib2.bin'
+        # ダウンロード試行
         while True:
-            # ダウンロード試行
             try:
-                req = requests.get(url, timeout=10)
+                req = requests.get(uri_grib2, timeout=10)
 
             # ダウンロードできない場合
             except Exception as e:
-                print(e)
+                print(f'[エラー　　　] {e}')
                 tm.sleep(10)
 
             # ダウンロードが成功したらファイルを保存
             else:
-                with open(file_name, 'wb') as fp:
+                with open(self.path_grib2, 'wb') as fp:
                     fp.write(req.content)
-                print('[ダウンロード] {0}'.format(file_name))
+                print(f'[ダウンロード] {self.path_grib2}: {uri_grib2}')
                 break
 
-    @classmethod
-    def download_grib2(cls):  # grib2ファイルをダウンロード
-        # ダウンロード開始日時
-        time = datetime.datetime(cls.time_start.year, cls.time_start.month, cls.time_start.day, 00, 00)
-        # ダウンロード終了日時の次の日
-        cls.time_end = datetime.date.today() - datetime.timedelta(days=1)
-        # ジョブリスト
+    def make_map_parallel(self):  # 天気図作成(並列処理)
+        # grib2ファイルを開く
+        self.grib2 = grib.open(self.path_grib2)
+        # 並列処理
         job_list = []
+        with futures.ProcessPoolExecutor(max_workers=8) as executor:
+            job_list.append(executor.submit(self.j_300_hw))
+            job_list.append(executor.submit(self.j_500_ht))
+            job_list.append(executor.submit(self.j_500_hv))
+            job_list.append(executor.submit(self.j_500_t_700_dewp))
+            job_list.append(executor.submit(self.j_850_ht))
+            job_list.append(executor.submit(self.j_850_tw_700_vv))
+            job_list.append(executor.submit(self.j_850_eptw))
+        _ = futures.as_completed(fs=job_list)
 
-        # ダウンロード[並列処理]
-        with futures.ProcessPoolExecutor(max_workers=2) as executor:
-            while time.date() < cls.time_end:
-                job_list.append(executor.submit(cls.download_grib2_sub, time=time))
-                # 日時を進める
-                time += datetime.timedelta(hours=6)
-            _ = futures.as_completed(fs=job_list)
+    def make_map(self):  # 天気図作成
+        # grib2ファイルを開く
+        self.grib2 = grib.open(self.path_grib2)
+        # 各天気図を作成
+        self.j_300_hw()
+        self.j_500_ht()
+        self.j_500_hv()
+        self.j_500_t_700_dewp()
+        self.j_850_eptw()
+        self.j_850_ht()
+        self.j_850_tw_700_vv()
 
-    @classmethod
-    def update_settings(cls):  # 設定ファイルの"ダウンロード開始日時"を更新
-        with open(cls.settings_file_path, mode='w') as f:
-            f.write('{0}\n{1}'.format(cls.path, cls.time_end.strftime('%Y/%m/%d')))
-        print('設定ファイルを更新しました')
-
-    @classmethod
-    def rm_tmp(cls):  # 一時ファイルを削除
-        try:
-            shutil.rmtree(os.path.join(cls.path, 'tmp'))
-        except Exception as e:
-            exit_program(e, sys.exc_info())
-
-    @classmethod
-    def make_dirs(cls):  # フォルダを作成
-        dir_list = ['tmp', 'j300hw', 'j500ht', 'j500hv', 'j500t700td', 'j850ht', 'j850tw700vv', 'j850eptw']
-        for dirs in dir_list:
-            os.makedirs(dirs, exist_ok=True)
-
-    @classmethod
-    def set_ax_jp(cls):  # 地図(日本域)を作成
+    def draw_map_jp(self):  # 地図(日本域)を作成
         # 地図
-        ax_jp = plt.subplot(111, projection=cls.mapcrs_jp)
+        ax_jp = plt.subplot(111, projection=self.mapcrs_jp)
         # 地図の範囲を設定
-        ax_jp.set_extent(cls.extent_jp, cls.datacrs)
+        ax_jp.set_extent(self.extent_jp, self.datacrs)
         # 海岸線を追加
         ax_jp.add_feature(cfeature.COASTLINE.with_scale('50m'))
         # 国境線を追加
@@ -230,38 +182,26 @@ class GpvDownloader:
                         linestyle=':', color='grey')
         return ax_jp
 
-    @classmethod
-    def gpv_select_jp(cls, gpv, shortName, level):  # 指定したデータを取得(日本域)
-        return gpv.select(shortName=shortName, level=level)[0].data(lat1=cls.lat_min_jp, lat2=cls.lat_max_jp, lon1=cls.lon_min_jp, lon2=cls.lon_max_jp)
-
-    @classmethod
-    def colorbar_jp(cls, cf):  # カラーバー
+    def colorbar_jp(self, cf):  # カラーバー
         return plt.colorbar(cf, orientation='horizontal', fraction=0.05, shrink=0.95, aspect=100, pad=0)
 
-    def __init__(self, time_now):
-        # grib2ファイル名
-        self.gpv_path = os.path.join('tmp', time_now.strftime('%Y%m%d%H'))
-        # grib2ファイルを開く
-        self.gpv = grib.open(self.gpv_path)
-        # 時刻
-        self.time_str1 = (time_now + datetime.timedelta(hours=self.time_diff)).strftime('%Y%m%d%H')
-        self.time_str2 = (time_now + datetime.timedelta(hours=self.time_diff)).strftime('%Y/%m/%d/%H')
+    # grib2ファイルから指定したデータを取得
+    def grib2_select_jp(self, shortName, level):
+        return self.grib2.select(shortName=shortName, level=level)[0].data(lat1=self.lat_min_jp, lat2=self.lat_max_jp, lon1=self.lon_min_jp, lon2=self.lon_max_jp)
 
-    def __del__(self):
-        self.gpv.close()
-
-    def j_300_hw(self):  # 300hPa Height & Winds in Japan
+    def j_300_hw(self):  # 300hPa高度/風(日本域)
         # 300hPa高度、緯度、経度の取得
-        height, lat, lon = self.gpv_select_jp(self.gpv, 'gh', 300)
+        height, lat, lon = self.grib2_select_jp('gh', 300)
+        # ガウシアンフィルター
         height = gaussian_filter(height, sigma=self.height_sigma)
         # 300hPa風の取得
-        uwnd, _, _ = self.gpv_select_jp(self.gpv, 'u', 300) * units('m/s')
-        vwnd, _, _ = self.gpv_select_jp(self.gpv, 'v', 300) * units('m/s')
+        uwnd, _, _ = self.grib2_select_jp('u', 300) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('v', 300) * units('m/s')
         sped = mpcalc.wind_speed(uwnd, vwnd).to('kt')
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 10, 210 / 10))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # 等風速線を引く
         cf = ax.contourf(lon, lat, sped, np.arange(0, 220, 20), extend='max', cmap='YlGnBu', transform=self.datacrs, alpha=0.9)
         # 風ベクトルの表示
@@ -272,65 +212,66 @@ class GpvDownloader:
         plt.clabel(cs, fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('Isotach (kt)')
+        cbar.set_label('WIND VELOCITY(kt)')
         # タイトルをつける
-        plt.title('300hpa: HEIGHT (m), WIND ARROW (kt), ISOTACH (kt)', loc='left')
+        plt.title('300hPa: HEIGHT(M), ISOTACH(kt)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 300hPa高度、風 を作成中...'.format(self.time_str2))
+        print('[{0}] 300hPa高度/風(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j300hw', 'j300hw_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_ht(self):  # 500hPa Height & Temperture in Japan
+    def j_500_ht(self):  # 500hPa高度/気温(日本域)
         # 500hPa高度、緯度、経度の取得
-        height, lat, lon = self.gpv_select_jp(self.gpv, 'gh', 500)
+        height, lat, lon = self.grib2_select_jp('gh', 500)
         height = gaussian_filter(height, sigma=self.height_sigma)
         # 500hPa気温の取得
-        temp, _, _ = self.gpv_select_jp(self.gpv, 't', 500)
+        temp, _, _ = self.grib2_select_jp('t', 500)
         temp = (temp * units.kelvin).to(units.celsius)
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
-        # 等温線を引く
+        ax = self.draw_map_jp()
+        # 温度の塗りつぶし
         clevs_temp = np.arange(-48, 9, 3)
         cf = ax.contourf(lon, lat, temp, clevs_temp, extend='both', cmap='jet', transform=self.datacrs, alpha=0.9)
+        # 等温線
         cg = ax.contour(lon, lat, temp, clevs_temp, colors='black', linestyles='dashed', alpha=0.5, transform=self.datacrs)
         plt.clabel(cg, levels=np.arange(-48, 9, 6), colors='black', fontsize=10, rightside_up=False, fmt='%d')
-        # 等高度線を引く
+        # 等高度線
         cs = ax.contour(lon, lat, height, np.arange(0, 8000, 60), colors='black', transform=self.datacrs)
         plt.clabel(cs, levels=np.hstack((np.arange(0, 5700, 120), np.arange(5700, 6000, 60))), fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('Temperature ($^\circ$C)')
+        cbar.set_label('TEMP($^\circ$C)')
         # タイトルをつける
-        plt.title('500hPa: HEIGHT (M), TEMP ($^\circ$C)', loc='left')
+        plt.title('500hPa: HEIGHT(M), TEMP($^\circ$C)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa高度、気温 を作成中...'.format(self.time_str2))
+        print('[{0}] 500hPa高度/気温(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j500ht', 'j500ht_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_hv(self):  # 500hPa Height & Vorticity & Winds in Japan
+    def j_500_hv(self):  # 500hPa高度/風/渦度(日本域)
         # 500hPa高度、緯度、経度の取得
-        height, lat, lon = self.gpv_select_jp(self.gpv, 'gh', 500)
+        height, lat, lon = self.grib2_select_jp('gh', 500)
         height = gaussian_filter(height, sigma=self.height_sigma)
         # 500hPa風の取得
-        uwnd, _, _ = self.gpv_select_jp(self.gpv, 'u', 500) * units('m/s')
-        vwnd, _, _ = self.gpv_select_jp(self.gpv, 'v', 500) * units('m/s')
+        uwnd, _, _ = self.grib2_select_jp('u', 500) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('v', 500) * units('m/s')
         # 渦度の計算
         dx, dy = mpcalc.lat_lon_grid_deltas(lon, lat)
         avor = mpcalc.vorticity(uwnd, vwnd, dx, dy, dim_order='yx')
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # カラーマップを作成する
         N = 140
         M = 380
@@ -349,32 +290,32 @@ class GpvDownloader:
         plt.clabel(cs, levels=np.hstack((np.arange(0, 5700, 120), np.arange(5700, 6000, 60))), fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('Vorticity ($10^{-6}/s$)')
+        cbar.set_label('VORT($10^{-6}/s$)')
         # タイトルをつける
-        plt.title('500hPa: HEIGHT (M), VORT ($10^{-6}/s$), WIND ARROW (kt)', loc='left')
+        plt.title('500hPa: HEIGHT(M), WIND ARROW(kt), VORT($10^{-6}/s$)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa高度、渦度、風 を作成中...'.format(self.time_str2))
+        print('[{0}] 500hPa高度/風/渦度(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j500hv', 'j500hv_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_t_700_dewp(self):  # 500hPa Temperature & 700hPa Dew point depression
+    def j_500_t_700_dewp(self):  # 500hPa気温/700hPa湿数(日本域)
         # 500hPa気温、緯度、経度の取得
-        temp, lat, lon = self.gpv_select_jp(self.gpv, 't', 500)
+        temp, lat, lon = self.grib2_select_jp('t', 500)
         temp = (temp * units.kelvin).to(units.celsius)
         # 700hPa湿数の取得
-        temp_700, _, _ = self.gpv_select_jp(self.gpv, 't', 700) * units.kelvin
-        rh, _, _ = self.gpv_select_jp(self.gpv, 'r', 700)
+        temp_700, _, _ = self.grib2_select_jp('t', 700) * units.kelvin
+        rh, _, _ = self.grib2_select_jp('r', 700)
         rh *= 0.01
         dewp_700 = mpcalc.dewpoint_from_relative_humidity(temp_700, rh)
         td = temp_700 - dewp_700
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # カラーマップを作成する
         N = 256
         M_PuBu = np.flipud(cm.get_cmap('BuPu', N)(range(N)))
@@ -390,29 +331,29 @@ class GpvDownloader:
         plt.clabel(cs, fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('T-Td ($^\circ$C)')
+        cbar.set_label('T-Td($^\circ$C)')
         # タイトルをつける
-        plt.title('500hPa: TEMP ($^\circ$C)\n700hPa: T-TD ($^\circ$C)', loc='left')
+        plt.title('500hPa: TEMP($^\circ$C)\n700hPa: T-Td($^\circ$C)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa気温、700hPa湿数 を作成中...'.format(self.time_str2))
+        print('[{0}] 500hPa気温/700hPa湿数(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j500t700td', 'j500t700td_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_ht(self):  # 850hPa Height & Temperture in Japan
+    def j_850_ht(self):  # 850hPa高度/気温(日本域)
         # 850hPa高度、緯度、経度の取得
-        height, lat, lon = self.gpv_select_jp(self.gpv, 'gh', 850)
+        height, lat, lon = self.grib2_select_jp('gh', 850)
         height = gaussian_filter(height, sigma=self.height_sigma)
         # 850hPa気温の取得
-        temp, _, _ = self.gpv_select_jp(self.gpv, 't', 850)
+        temp, _, _ = self.grib2_select_jp('t', 850)
         temp = (temp * units.kelvin).to(units.celsius)
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # 等温線を引く
         clevs_temp = np.arange(-24, 33, 3)
         cf = ax.contourf(lon, lat, temp, clevs_temp, extend='both', cmap='jet', transform=self.datacrs, alpha=0.9)
@@ -423,32 +364,32 @@ class GpvDownloader:
         plt.clabel(cs, fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('Temperature ($^\circ$C)')
+        cbar.set_label('TEMP($^\circ$C)')
         # タイトルをつける
-        plt.title('850hPa: HEIGHT (M), TEMP ($^\circ$C)', loc='left')
+        plt.title('850hPa: HEIGHT(M), TEMP($^\circ$C)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa高度、気温 を作成中...'.format(self.time_str2))
+        print('[{0}] 850hPa高度/気温(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j850ht', 'j850ht_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_tw_700_vv(self):  # 850hPa Temperture, Wind & 700hPa Vertical Velocity in Japan
+    def j_850_tw_700_vv(self):  # 850hPa気温/風，700hPa上昇流(日本域)
         # 850hPa気温、緯度、経度の取得
-        temp, lat, lon = self.gpv_select_jp(self.gpv, 't', 850)
+        temp, lat, lon = self.grib2_select_jp('t', 850)
         temp = (gaussian_filter(temp, sigma=1.0) * units.kelvin).to(units.celsius)
         # 700hPa上昇流の取得
-        vv, _, _ = self.gpv_select_jp(self.gpv, 'w', 700)
+        vv, _, _ = self.grib2_select_jp('w', 700)
         vv = (vv * units.Pa / units.second).to(units.hPa / units.hour)
         # 850hPa風の取得
-        uwnd, _, _ = self.gpv_select_jp(self.gpv, 'u', 850) * units('m/s')
-        vwnd, _, _ = self.gpv_select_jp(self.gpv, 'v', 850) * units('m/s')
+        uwnd, _, _ = self.grib2_select_jp('u', 850) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('v', 850) * units('m/s')
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # カラーマップを作成する
         N = 125
         M = 65
@@ -465,27 +406,27 @@ class GpvDownloader:
         plt.clabel(cs, levels=np.arange(-60, 60, 6), fmt='%d')
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('Vertial Velocity (hPa/h)')
+        cbar.set_label('VERTICAL VELOCITY(hPa/h)')
         # タイトルをつける
-        plt.title('850hPa: HEIGHT (M), WIND ARROW (kt)\n700hPa: VERTICAL VELOCITY (hPa/h)', loc='left')
+        plt.title('850hPa: HEIGHT(M), WIND ARROW(kt)\n700hPa: VERTICAL VELOCITY(hPa/h)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa気温、風、700hPa鉛直流 を作成中...'.format(self.time_str2))
+        print('[{0}] 850hPa気温/風，700hPa上昇流(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j850tw700vv', 'j850tw700vv_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_eptw(self):  # 850hPa Equivalent Potential Temperture & Wind in Japan
+    def j_850_eptw(self):  # 850hPa相当温位/風(日本域)
         # 850hPa気温の取得
-        temp, lat, lon = self.gpv_select_jp(self.gpv, 't', 850)
+        temp, lat, lon = self.grib2_select_jp('t', 850)
         temp = temp * units.kelvin
         # 850hPa風の取得
-        uwnd, _, _ = self.gpv_select_jp(self.gpv, 'u', 850) * units('m/s')
-        vwnd, _, _ = self.gpv_select_jp(self.gpv, 'v', 850) * units('m/s')
+        uwnd, _, _ = self.grib2_select_jp('u', 850) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('v', 850) * units('m/s')
         # 850hPa相対湿度の取得
-        rh, _, _ = self.gpv_select_jp(self.gpv, 'r', 850)
+        rh, _, _ = self.grib2_select_jp('r', 850)
         rh *= 0.01
         # 露点温度の計算
         dewp = mpcalc.dewpoint_from_relative_humidity(temp, rh)
@@ -493,28 +434,28 @@ class GpvDownloader:
         ept = mpcalc.equivalent_potential_temperature(850 * units.hPa, temp, dewp)
         ept = gaussian_filter(ept, sigma=1.0)
         # 図の数、大きさを設定
-        fig = plt.figure(1, figsize=(294 / 25.4, 210 / 25.4))
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
         # 地図の描画
-        ax = self.set_ax_jp()
+        ax = self.draw_map_jp()
         # 等温線を引く
         clevs_ept = np.arange(255, 372, 3)
         cf = ax.contourf(lon, lat, ept, clevs_ept, extend='both', cmap='jet', transform=self.datacrs, alpha=0.9)
         cg = ax.contour(lon, lat, ept, clevs_ept, colors='black', linestyles='solid', linewidths=1, transform=self.datacrs)
         plt.clabel(cg, levels=np.arange(258, 372, 6), fmt='%d')
         # 風ベクトルの表示
-        wind_slice = (slice(None, None, 3), slice(None, None, 3))
+        wind_slice = (slice(None, None, 5), slice(None, None, 5))
         ax.barbs(lon[wind_slice], lat[wind_slice], uwnd[wind_slice].to('kt').m,
-                 vwnd[wind_slice].to('kt').m, pivot='middle', length=4, color='black', alpha=0.5, transform=self.datacrs)
+                 vwnd[wind_slice].to('kt').m, pivot='middle', length=6, color='black', alpha=0.5, transform=self.datacrs)
         # カラーバーをつける
         cbar = self.colorbar_jp(cf)
-        cbar.set_label('E.P.TEMP (K)')
+        cbar.set_label('E.P.TEMP(K)')
         # タイトルをつける
-        plt.title('850hPa: E.P.TEMP (K), WIND ARROW (kt)', loc='left')
+        plt.title('850hPa: E.P.TEMP(K), WIND ARROW(kt)', loc='left')
         plt.title(self.time_str2, loc='right')
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa相当温位、風 を作成中...'.format(self.time_str2))
+        print('[{0}] 850hPa相当温位/風(日本域)...'.format(self.time_str2))
         plt.savefig(os.path.join('j850eptw', 'j850eptw_' + self.time_str1 + '.png'))
         # 閉じる
         plt.close(fig=fig)
