@@ -1,3 +1,2 @@
-from .jma_downloader import jma_downloader
-from .gpv_downloader import gpv_downloader
-__all__ = ["jma_downloader", "gpv_downloader"]
+from .download_gpv import download_gpv
+__all__ = ["download_gpv"]

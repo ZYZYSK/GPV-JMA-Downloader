@@ -1,9 +1,8 @@
-import functions
-from functions import gpv_downloader
+from functions import download_gpv
 
 
 def main():
-    gpv_downloader()
+    download_gpv()
 
 
 if __name__ == "__main__":
