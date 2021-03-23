@@ -49,16 +49,16 @@ class DownloadGPV:
     # 高度のシグマ
     height_sigma = 1.0
 
-    def __init__(self, time_this, fig_x, fig_y):
+    def __init__(self, time_this, fig_x, fig_y, path):
         # 時間
         self.time_this = time_this
-        self.time_str1 = (time_this + datetime.timedelta(hours=self.time_diff)).strftime('%Y%m%d%H')
-        self.time_str2 = (time_this + datetime.timedelta(hours=self.time_diff)).strftime('%Y/%m/%d/%H')
+        self.time_str1 = time_this.strftime('%Y%m%d%H')
+        self.time_str2 = f'{(time_this + datetime.timedelta(hours=self.time_diff)).strftime("%Y.%m.%d %H")}JST ({time_this.strftime("%Y.%m.%d %H")}UTC)'
         # 解像度x,y
         self.fig_x = fig_x
         self.fig_y = fig_y
         # ダウンロードするgrib2ファイルの保存先
-        self.path_grib2 = os.path.join('tmp', time_this.strftime('%Y%m%d%H'))
+        self.path_grib2 = os.path.join(path, time_this.strftime('%Y%m%d%H'))
         # grib2ファイル
         self.grib2 = None
 
@@ -68,52 +68,26 @@ class DownloadGPV:
 
     def download_grib2(self):  # grib2ファイルのダウンロード
         # ダウンロード済みの場合は何もしない
-        if(os.path.exists(self.path_grib2)): return
-        # ダウンロード先URI
-        uri_grib2 = f'http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/{self.time_this.strftime("%Y/%m/%d")}/Z__C_RJTD_{self.time_this.strftime("%Y%m%d%H%M%S")}_GSM_GPV_Rgl_FD0000_grib2.bin'
-        # ダウンロード試行
-        while True:
-            try:
-                req = requests.get(uri_grib2, timeout=10)
+        if not os.path.exists(self.path_grib2):
+            # ダウンロード先URI
+            uri_grib2 = f'http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/{self.time_this.strftime("%Y/%m/%d")}/Z__C_RJTD_{self.time_this.strftime("%Y%m%d%H%M%S")}_GSM_GPV_Rgl_FD0000_grib2.bin'
+            # ダウンロード試行
+            while True:
+                try:
+                    req = requests.get(uri_grib2, timeout=10)
 
-            # ダウンロードできない場合
-            except Exception as e:
-                print(f'[エラー　　　] {e}')
-                tm.sleep(10)
+                # ダウンロードできない場合
+                except Exception as e:
+                    print(f'[エラー　　　] {e}')
+                    tm.sleep(10)
 
-            # ダウンロードが成功したらファイルを保存
-            else:
-                with open(self.path_grib2, 'wb') as fp:
-                    fp.write(req.content)
-                print(f'[ダウンロード] {self.path_grib2}: {uri_grib2}')
-                break
-
-    def make_map_parallel(self):  # 天気図作成(並列処理)
-        # grib2ファイルを開く
+                # ダウンロードが成功したらファイルを保存
+                else:
+                    with open(self.path_grib2, 'wb') as fp:
+                        fp.write(req.content)
+                    print(f'[ダウンロード] {self.path_grib2}: {uri_grib2}')
+                    break
         self.grib2 = grib.open(self.path_grib2)
-        # 並列処理
-        job_list = []
-        with futures.ProcessPoolExecutor(max_workers=8) as executor:
-            job_list.append(executor.submit(self.j_300_hw))
-            job_list.append(executor.submit(self.j_500_ht))
-            job_list.append(executor.submit(self.j_500_hv))
-            job_list.append(executor.submit(self.j_500_t_700_dewp))
-            job_list.append(executor.submit(self.j_850_ht))
-            job_list.append(executor.submit(self.j_850_tw_700_vv))
-            job_list.append(executor.submit(self.j_850_eptw))
-        _ = futures.as_completed(fs=job_list)
-
-    def make_map(self):  # 天気図作成
-        # grib2ファイルを開く
-        self.grib2 = grib.open(self.path_grib2)
-        # 各天気図を作成
-        self.j_300_hw()
-        self.j_500_ht()
-        self.j_500_hv()
-        self.j_500_t_700_dewp()
-        self.j_850_eptw()
-        self.j_850_ht()
-        self.j_850_tw_700_vv()
 
     def draw_map_jp(self):  # 地図(日本域)を作成
         # 地図
@@ -139,7 +113,9 @@ class DownloadGPV:
     def grib2_select_jp(self, shortName, level):
         return self.grib2.select(shortName=shortName, level=level)[0].data(lat1=self.lat_min_jp, lat2=self.lat_max_jp, lon1=self.lon_min_jp, lon2=self.lon_max_jp)
 
-    def j_300_hw(self):  # 300hPa高度/風(日本域)
+    def j_300_hw(self, path):  # 300hPa高度/風(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 300hPa高度、緯度、経度の取得
         height, lat, lon = self.grib2_select_jp('gh', 300)
         # ガウシアンフィルター
@@ -169,12 +145,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 300hPa高度/風(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j300hw', 'j300hw_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 300hPa高度/風(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_ht(self):  # 500hPa高度/気温(日本域)
+    def j_500_ht(self, path):  # 500hPa高度/気温(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 500hPa高度、緯度、経度の取得
         height, lat, lon = self.grib2_select_jp('gh', 500)
         height = gaussian_filter(height, sigma=self.height_sigma)
@@ -203,12 +181,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa高度/気温(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j500ht', 'j500ht_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 500hPa高度/気温(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_hv(self):  # 500hPa高度/風/渦度(日本域)
+    def j_500_hv(self, path):  # 500hPa高度/風/渦度(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 500hPa高度、緯度、経度の取得
         height, lat, lon = self.grib2_select_jp('gh', 500)
         height = gaussian_filter(height, sigma=self.height_sigma)
@@ -247,12 +227,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa高度/風/渦度(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j500hv', 'j500hv_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 500hPa高度/風/渦度(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_t_700_dewp(self):  # 500hPa気温/700hPa湿数(日本域)
+    def j_500_t_700_dewp(self, path):  # 500hPa気温/700hPa湿数(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 500hPa気温、緯度、経度の取得
         temp, lat, lon = self.grib2_select_jp('t', 500)
         temp = (temp * units.kelvin).to(units.celsius)
@@ -288,12 +270,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 500hPa気温/700hPa湿数(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j500t700td', 'j500t700td_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 500hPa気温/700hPa湿数(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_ht(self):  # 850hPa高度/気温(日本域)
+    def j_850_ht(self, path):  # 850hPa高度/気温(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 850hPa高度、緯度、経度の取得
         height, lat, lon = self.grib2_select_jp('gh', 850)
         height = gaussian_filter(height, sigma=self.height_sigma)
@@ -321,12 +305,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa高度/気温(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j850ht', 'j850ht_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 850hPa高度/気温(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_tw_700_vv(self):  # 850hPa気温/風，700hPa上昇流(日本域)
+    def j_850_tw_700_vv(self, path):  # 850hPa気温/風，700hPa上昇流(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 850hPa気温、緯度、経度の取得
         temp, lat, lon = self.grib2_select_jp('t', 850)
         temp = (gaussian_filter(temp, sigma=1.0) * units.kelvin).to(units.celsius)
@@ -363,12 +349,14 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa気温/風，700hPa上昇流(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j850tw700vv', 'j850tw700vv_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 850hPa気温/風，700hPa上昇流(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_eptw(self):  # 850hPa相当温位/風(日本域)
+    def j_850_eptw(self, path):  # 850hPa相当温位/風(日本域)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
         # 850hPa気温の取得
         temp, lat, lon = self.grib2_select_jp('t', 850)
         temp = temp * units.kelvin
@@ -405,7 +393,7 @@ class DownloadGPV:
         # 大きさの調整
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
-        print('[{0}] 850hPa相当温位/風(日本域)...'.format(self.time_str2))
-        plt.savefig(os.path.join('j850eptw', 'j850eptw_' + self.time_str1 + '.png'))
+        print(f'[{self.time_str2}] 850hPa相当温位/風(日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
