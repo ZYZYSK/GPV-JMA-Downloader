@@ -113,7 +113,7 @@ class DownloadGPV:
     def grib2_select_jp(self, shortName, level):
         return self.grib2.select(shortName=shortName, level=level)[0].data(lat1=self.lat_min_jp, lat2=self.lat_max_jp, lon1=self.lon_min_jp, lon2=self.lon_max_jp)
 
-    def j_300_hw(self, path):  # 300hPa高度/風(日本域)
+    def jp_300_hw(self, path):  # 300hPa高度/風(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 300hPa高度、緯度、経度の取得
@@ -150,7 +150,7 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_ht(self, path):  # 500hPa高度/気温(日本域)
+    def jp_500_ht(self, path):  # 500hPa高度/気温(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 500hPa高度、緯度、経度の取得
@@ -186,7 +186,7 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_hv(self, path):  # 500hPa高度/風/渦度(日本域)
+    def jp_500_hv(self, path):  # 500hPa高度/風/渦度(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 500hPa高度、緯度、経度の取得
@@ -232,7 +232,7 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_500_t_700_dewp(self, path):  # 500hPa気温/700hPa湿数(日本域)
+    def jp_500_t_700_td(self, path):  # 500hPa気温/700hPa湿数(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 500hPa気温、緯度、経度の取得
@@ -275,7 +275,7 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_ht(self, path):  # 850hPa高度/気温(日本域)
+    def jp_850_ht(self, path):  # 850hPa高度/気温(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 850hPa高度、緯度、経度の取得
@@ -310,7 +310,7 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_tw_700_vv(self, path):  # 850hPa気温/風，700hPa上昇流(日本域)
+    def jp_850_tw_700_vv(self, path):  # 850hPa気温/風，700hPa上昇流(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 850hPa気温、緯度、経度の取得
@@ -354,7 +354,8 @@ class DownloadGPV:
         # 閉じる
         plt.close(fig=fig)
 
-    def j_850_eptw(self, path):  # 850hPa相当温位/風(日本域)
+    def jp_850_eptw(self, path):  # 850hPa相当温位/風(日本域)
+
         path_fig = os.path.join(path, self.time_str1 + '.png')
         if(os.path.exists(path_fig)): return
         # 850hPa気温の取得
@@ -397,3 +398,97 @@ class DownloadGPV:
         plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
+
+    def jp_surf_pwt(self, path):  # 地上気圧/風/気温（日本域）
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
+        # 地上気圧，緯度，経度の取得
+        pressure, lat, lon = self.grib2_select_jp("prmsl", 0)
+        pressure *= units('Pa')
+        pressure /= 100
+        # ガウシアンフィルター
+        pressure = gaussian_filter(pressure, sigma=3.0)
+        # 地上気温の取得
+        temp, _, _ = self.grib2_select_jp("t", 1000)
+        temp = (temp * units.kelvin).to(units.celsius)
+        # 地上風の取得
+        uwnd, _, _ = self.grib2_select_jp('10u', 10) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('10v', 10) * units('m/s')
+        # 図の数、大きさを設定
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
+        # 地図の描画
+        ax = self.draw_map_jp()
+        # 等温線を引く
+        clevs_temp = np.arange(-15, 42, 3)
+        cf = ax.contourf(lon, lat, temp, clevs_temp, extend="both", cmap="jet", transform=self.datacrs, alpha=0.9)
+        cg = ax.contour(lon, lat, temp, clevs_temp, colors='black', linestyles='dashed', alpha=0.5, transform=self.datacrs)
+        plt.clabel(cg, levels=np.arange(-15, 42, 6), colors="black", fontsize=10, rightside_up=False, fmt="%d")
+        # 風ベクトルの表示
+        wind_slice = (slice(None, None, 5), slice(None, None, 5))
+        ax.barbs(lon[wind_slice], lat[wind_slice], uwnd[wind_slice].to('kt').m, vwnd[wind_slice].to('kt').m, pivot='middle', color='black', alpha=0.5, transform=self.datacrs)
+        # 等圧線を引く
+        cs = ax.contour(lon, lat, pressure, np.arange(900, 1600, 4), colors="black", transform=self.datacrs)
+        plt.clabel(cs, fmt="%d")
+        # カラーバーをつける
+        cbar = self.colorbar_jp(cf)
+        cbar.set_label('TEMP($^\circ$C)')
+        # タイトルをつける
+        plt.title('GROUND: PRESSURE(hPa), TEMP($^\circ$C), WIND ARROW(kt)', loc='left')
+        plt.title(self.time_str2, loc='right')
+        # 大きさの調整
+        plt.subplots_adjust(bottom=0.1, top=0.9)
+        # 保存
+        print(f'[{self.time_str2}] 地上気圧/風/気温（日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
+        # 閉じる
+        plt.close(fig=fig)
+
+    def jp_surf_ppc(self, path):  # 地上気圧/降水量/雲量（日本域）
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
+        # 地上気圧，緯度，経度の取得
+        pressure, lat, lon = self.grib2_select_jp("prmsl", 0)
+        pressure *= units('Pa')
+        pressure /= 100
+        # ガウシアンフィルター
+        pressure = gaussian_filter(pressure, sigma=3.0)
+        # 雲量の取得
+
+        # 地上気温の取得
+        temp, _, _ = self.grib2_select_jp("t", 1000)
+        temp = (temp * units.kelvin).to(units.celsius)
+        # 地上風の取得
+        uwnd, _, _ = self.grib2_select_jp('10u', 10) * units('m/s')
+        vwnd, _, _ = self.grib2_select_jp('10v', 10) * units('m/s')
+        # 図の数、大きさを設定
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_y))
+        # 地図の描画
+        ax = self.draw_map_jp()
+        # 等温線を引く
+        clevs_temp = np.arange(-15, 42, 3)
+        cf = ax.contourf(lon, lat, temp, clevs_temp, extend="both", cmap="jet", transform=self.datacrs, alpha=0.9)
+        cg = ax.contour(lon, lat, temp, clevs_temp, colors='black', linestyles='dashed', alpha=0.5, transform=self.datacrs)
+        plt.clabel(cg, levels=np.arange(-15, 42, 6), colors="black", fontsize=10, rightside_up=False, fmt="%d")
+        # 風ベクトルの表示
+        wind_slice = (slice(None, None, 5), slice(None, None, 5))
+        ax.barbs(lon[wind_slice], lat[wind_slice], uwnd[wind_slice].to('kt').m, vwnd[wind_slice].to('kt').m, pivot='middle', color='black', alpha=0.5, transform=self.datacrs)
+        # 等圧線を引く
+        cs = ax.contour(lon, lat, pressure, np.arange(900, 1600, 4), colors="black", transform=self.datacrs)
+        plt.clabel(cs, fmt="%d")
+        # カラーバーをつける
+        cbar = self.colorbar_jp(cf)
+        cbar.set_label('TEMP($^\circ$C)')
+        # タイトルをつける
+        plt.title('GROUND: PRESSURE(hPa), TEMP($^\circ$C), WIND ARROW(kt)', loc='left')
+        plt.title(self.time_str2, loc='right')
+        # 大きさの調整
+        plt.subplots_adjust(bottom=0.1, top=0.9)
+        # 保存
+        print(f'[{self.time_str2}] 地上気圧/風/気温（日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
+        # 閉じる
+        plt.close(fig=fig)
+
+    def test(self):  # テスト用
+        [print(self.grib2.message(i)) for i in range(1, 100)]
+        print(self.grib2_select_jp("prmsl", 0))

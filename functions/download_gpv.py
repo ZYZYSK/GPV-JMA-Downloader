@@ -31,13 +31,14 @@ def download_gpv():
         try:
             t = DownloadGPV(time_start, settings["fig_x"], settings["fig_y"], settings["path"]["tmp"])
             t.download_grib2()
-            t.j_300_hw(settings["path"]["j300hw"])
-            t.j_500_ht(settings["path"]["j500ht"])
-            t.j_500_hv(settings["path"]["j500hv"])
-            t.j_500_t_700_dewp(settings["path"]["j500t700td"])
-            t.j_850_ht(settings["path"]["j850ht"])
-            t.j_850_tw_700_vv(settings["path"]["j850tw700vv"])
-            t.j_850_eptw(settings["path"]["j850eptw"])
+            t.jp_300_hw(settings["path"]["jp_300_hw"])
+            t.jp_500_ht(settings["path"]["jp_500_ht"])
+            t.jp_500_hv(settings["path"]["jp_500_hv"])
+            t.jp_500_t_700_td(settings["path"]["jp_500_t_700_td"])
+            t.jp_850_ht(settings["path"]["jp_850_ht"])
+            t.jp_850_tw_700_vv(settings["path"]["jp_850_tw_700_vv"])
+            t.jp_850_eptw(settings["path"]["jp_850_eptw"])
+            t.jp_surf_pwt(settings["path"]["jp_surf_pwt"])
         except Exception as e:
             exit_program(e, sys.exc_info())
         time_start += datetime.timedelta(hours=6)
@@ -46,6 +47,8 @@ def download_gpv():
         shutil.rmtree(settings["path"]["tmp"])
     # 設定の更新
     update_settings(settings, time_start)
+    # 完了
+    exit_program("完了しました")
 
 
 def update_settings(settings, time_start):

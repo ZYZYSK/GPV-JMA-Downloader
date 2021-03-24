@@ -13,3 +13,4 @@ def download_rad():
     t = DownloadRadar()
     # ダウンロード
     t.download_j_radar()
+    exit_program("完了しました")

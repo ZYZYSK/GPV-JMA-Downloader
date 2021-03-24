@@ -12,8 +12,9 @@ def download_sat():
     # クラス
     t = DownloadSatellite()
     # ダウンロード
-    t.download_j_infrared()
-    t.download_j_visible()
-    t.download_j_watervapor()
-    t.download_j_truecolor()
-    t.download_j_cloudheight()
+    t.download_jp_infrared()
+    t.download_jp_visible()
+    t.download_jp_watervapor()
+    t.download_jp_truecolor()
+    t.download_jp_cloudheight()
+    exit_program("完了しました")
