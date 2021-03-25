@@ -1,16 +1,16 @@
-from .download_gpvclass import *
+from .download_gsmclass import *
 
 if __name__ == "__main__":
     print("please execute main.py")
     sys.exit()
 
 
-def download_gpv():
-    print("#####GPV Downloader#####")
+def download_gsm():
+    print("#####GSM Downloader#####")
     # SIGINTシグナルを受け取る
     signal.signal(signal.SIGINT, handler_sigint)
     # 設定ファイルの読み込み
-    with open("settings_gpv.json") as fp:
+    with open("settings_gsm.json") as fp:
         settings = json.load(fp)
     # ディレクトリが存在しなければ作成
     try:
@@ -29,7 +29,7 @@ def download_gpv():
     # ダウンロードと天気図作成
     while time_start.date() < time_end:
         try:
-            t = DownloadGPV(time_start, settings["fig_x"], settings["fig_y"], settings["path"]["tmp"])
+            t = DownloadGSM(time_start, settings["fig_x"], settings["fig_y"], settings["path"]["tmp"])
             t.download_grib2()
             t.jp_300_hw(settings["path"]["jp_300_hw"])
             t.jp_500_ht(settings["path"]["jp_500_ht"])
@@ -56,6 +56,6 @@ def update_settings(settings, time_start):
     settings["time_start"]["year"] = time_start.year
     settings["time_start"]["month"] = time_start.month
     settings["time_start"]["day"] = time_start.day
-    with open("settings_gpv.json", "w") as fp:
+    with open("settings_gsm.json", "w") as fp:
         json.dump(settings, fp)
     print("#####完了#####")

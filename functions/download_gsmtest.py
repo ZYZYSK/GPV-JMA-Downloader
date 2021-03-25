@@ -1,16 +1,16 @@
-from .download_gpvclass import *
+from .download_gsmclass import *
 
 if __name__ == "__main__":
     print("please execute main.py")
     sys.exit()
 
 
-def download_gpvtest():
-    print("#####GPV Downloader#####")
+def download_gsmtest():
+    print("#####GSM Downloader#####")
     # SIGINTシグナルを受け取る
     signal.signal(signal.SIGINT, handler_sigint)
     # 設定ファイルの読み込み
-    with open("settings_gpv.json") as fp:
+    with open("settings_gsm.json") as fp:
         settings = json.load(fp)
     # ディレクトリが存在しなければ作成
     try:
@@ -22,7 +22,7 @@ def download_gpvtest():
     time_this = datetime.date.today() - datetime.timedelta(days=1)
     # ダウンロードと天気図作成
     try:
-        t = DownloadGPV(time_this, settings["fig_x"], settings["fig_y"], settings["path"]["tmp"])
+        t = DownloadGSM(time_this, settings["fig_x"], settings["fig_y"], settings["path"]["tmp"])
         t.download_grib2()
         t.test()
     except Exception as e:

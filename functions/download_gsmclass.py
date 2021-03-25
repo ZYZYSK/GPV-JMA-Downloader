@@ -29,7 +29,7 @@ from .exit_program import *
 from .file_is_on_server import *
 
 
-class DownloadGPV:
+class DownloadGSM:
     ###################################################################
     # クラス変数
     ###################################################################
@@ -455,7 +455,7 @@ class DownloadGPV:
         # 雲量の取得
 
         # 地上気温の取得
-        temp, _, _ = self.grib2_select_jp("t", 1000)
+        temp, _, _ = self.grib2_select_jp("2t", 2)
         temp = (temp * units.kelvin).to(units.celsius)
         # 地上風の取得
         uwnd, _, _ = self.grib2_select_jp('10u', 10) * units('m/s')
@@ -490,5 +490,5 @@ class DownloadGPV:
         plt.close(fig=fig)
 
     def test(self):  # テスト用
-        [print(self.grib2.message(i)) for i in range(1, 100)]
-        print(self.grib2_select_jp("prmsl", 0))
+        [print(self.grib2.message(i)) for i in range(1, 110)]
+        print(self.grib2.select(shortName="cp"))

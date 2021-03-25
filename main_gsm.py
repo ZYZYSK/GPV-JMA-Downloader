@@ -1,8 +1,8 @@
-from functions import download_gpv
+from functions import download_gsm
 
 
 def main():
-    download_gpv()
+    download_gsm()
 
 
 if __name__ == "__main__":

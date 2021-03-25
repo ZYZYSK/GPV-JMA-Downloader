@@ -25,26 +25,26 @@ class DownloadRadar(DownloadSatellite):
         except Exception as e:
             exit_program(e, sys.exc_info())
         # 地図が存在しなければ作成して，開く
-        self.image_map = self.draw_base(6, 53, 22, 58, 27, self.settings["path_map"]["j"])
+        self.image_map = self.draw_base(6, 53, 22, 58, 27, self.settings["path_map"]["jp"])
         # 凡例が存在しなければ取得して，追加
         self.draw_legend()
         # 時刻リストを取得(日本域)
-        self.j_time_list = super().get_time_list("https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json", "レーダー画像")
+        self.jp_time_list = super().get_time_list("https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json", "レーダー画像")
         # # 時刻表にのっていない時間
-        self.time_end = datetime.datetime.strptime(self.j_time_list[-1]["basetime"], "%Y%m%d%H%M%S")
+        self.time_end = datetime.datetime.strptime(self.jp_time_list[-1]["basetime"], "%Y%m%d%H%M%S")
         self.time_begin = self.time_end - datetime.timedelta(days=4)
 
-    def download_j_radar(self):  # ダウンロード(レーダー画像,日本域)
-        for time_this in self.j_time_list:
+    def download_jp_radar(self):  # ダウンロード(レーダー画像,日本域)
+        for time_this in self.jp_time_list:
             # 保存先
-            path = os.path.join(self.settings["path"]["j_radar"], f'{time_this["basetime"]}.jpg')
+            path = os.path.join(self.settings["path"]["jp_radar"], f'{time_this["basetime"]}.jpg')
             self.draw_content(time_this["basetime"], time_this["validtime"], 6, 53, 22, 58, 27, path, check=False)
         # 時刻リストにのっていない古いデータをダウンロード
         time_this = self.time_begin
         while time_this < self.time_end:
             # 保存先
             basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["j_radar"], f'{basetime}.jpg')
+            path = os.path.join(self.settings["path"]["jp_radar"], f'{basetime}.jpg')
             # 画像作成
             self.draw_content(basetime, basetime, 6, 53, 22, 58, 27, path)
             time_this += datetime.timedelta(minutes=5)

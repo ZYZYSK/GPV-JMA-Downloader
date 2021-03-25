@@ -12,5 +12,5 @@ def download_rad():
     # クラス
     t = DownloadRadar()
     # ダウンロード
-    t.download_j_radar()
+    t.download_jp_radar()
     exit_program("完了しました")
