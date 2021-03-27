@@ -9,8 +9,11 @@ def download_rad():
     print("#####Radar Downloader#####")
     # SIGINTシグナルを受け取る
     signal.signal(signal.SIGINT, handler_sigint)
-    # クラス
-    t = DownloadRadar()
-    # ダウンロード
-    t.download_jp_radar()
+    try:
+        # クラス
+        t = DownloadRadar()
+        # ダウンロード
+        t.download_jp_radar()
+    except Exception as e:
+        exit_program(e, sys.exc_info())
     exit_program("完了しました")

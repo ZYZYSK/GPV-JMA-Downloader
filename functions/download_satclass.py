@@ -42,7 +42,7 @@ class DownloadSatellite:
         self.jp_time_list = self.get_time_list("https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_fd.json", "気象衛星画像")
         # 時刻表にのっていない時間
         self.time_end = datetime.datetime.strptime(self.jp_time_list[0]["basetime"], "%Y%m%d%H%M%S")
-        self.time_begin = self.time_end - datetime.timedelta(days=7)
+        self.time_begin = self.time_end - datetime.timedelta(days=1)
 
     def get_time_list(self, uri, text):  # 時刻リストを取得
         while True:
@@ -56,75 +56,35 @@ class DownloadSatellite:
                 print(f'[時刻リストを取得({text})]')
                 return time_list
 
-    def download_jp_infrared(self):  # ダウンロード(赤外画像,日本域)
+    def download_jp_common(self, band, prod, z, x0, y0, x1, y1, path_dir, alpha=0.95, beta=0.05):  # ダウンロード(共通，日本域)
         for time_this in self.jp_time_list:
             # 保存先
-            path = os.path.join(self.settings["path"]["jp_infrared"], f'{time_this["basetime"]}.jpg')
-            self.draw_content(time_this["basetime"], time_this["validtime"], "B13", "TBB", 5, 25, 10, 30, 14, path, check=False)
+            path = os.path.join(path_dir, f'{time_this["basetime"]}.jpg')
+            self.draw_content(time_this["basetime"], time_this["validtime"], band, prod, z, x0, y0, x1, y1, path, check=False, alpha=alpha, beta=beta)
         # 時刻リストにのっていない古いデータをダウンロード
         time_this = self.time_begin
         while time_this < self.time_end:
-            # 保存先
-            basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["jp_infrared"], f'{basetime}.jpg')
-            self.draw_content(basetime, basetime, "B13", "TBB", 5, 25, 10, 30, 14, path)
+            if time_this.hour % 12 != 2 and time_this.minute != 50:
+                # 保存先
+                basetime = time_this.strftime("%Y%m%d%H%M%S")
+                path = os.path.join(path_dir, f'{basetime}.jpg')
+                self.draw_content(basetime, basetime, band, prod, z, x0, y0, x1, y1, path, alpha=alpha, beta=beta)
             time_this += datetime.timedelta(minutes=10)
+
+    def download_jp_infrared(self):  # ダウンロード(赤外画像,日本域)
+        self.download_jp_common("B13", "TBB", 5, 25, 10, 30, 14, self.settings["path"]["jp_infrared"])
 
     def download_jp_visible(self):  # ダウンロード(可視画像,日本域)
-        for time_this in self.jp_time_list:
-            # 保存先
-            path = os.path.join(self.settings["path"]["jp_visible"], f'{time_this["basetime"]}.jpg')
-            self.draw_content(time_this["basetime"], time_this["validtime"], "B03", "ALBD", 5, 25, 10, 30, 14, path, check=False)
-        # 時刻リストにのっていない古いデータをダウンロード
-        time_this = self.time_begin
-        while time_this < self.time_end:
-            # 保存先
-            basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["jp_visible"], f'{basetime}.jpg')
-            self.draw_content(basetime, basetime, "B03", "ALBD", 5, 25, 10, 30, 14, path)
-            time_this += datetime.timedelta(minutes=10)
+        self.download_jp_common("B03", "ALBD", 5, 25, 10, 30, 14, self.settings["path"]["jp_visible"])
 
     def download_jp_watervapor(self):  # ダウンロード(水蒸気画像,日本域)
-        for time_this in self.jp_time_list:
-            # 保存先
-            path = os.path.join(self.settings["path"]["jp_watervapor"], f'{time_this["basetime"]}.jpg')
-            self.draw_content(time_this["basetime"], time_this["validtime"], "B08", "TBB", 5, 25, 10, 30, 14, path, check=False)
-        # 時刻リストにのっていない古いデータをダウンロード
-        time_this = self.time_begin
-        while time_this < self.time_end:
-            # 保存先
-            basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["jp_watervapor"], f'{basetime}.jpg')
-            self.draw_content(basetime, basetime, "B08", "TBB", 5, 25, 10, 30, 14, path)
-            time_this += datetime.timedelta(minutes=10)
+        self.download_jp_common("B13", "TBB", 5, 25, 10, 30, 14, self.settings["path"]["jp_watervapor"])
 
     def download_jp_truecolor(self):  # ダウンロード(トゥルーカラー再現画像,日本域)
-        for time_this in self.jp_time_list:
-            # 保存先
-            path = os.path.join(self.settings["path"]["jp_truecolor"], f'{time_this["basetime"]}.jpg')
-            self.draw_content(time_this["basetime"], time_this["validtime"], "REP", "ETC", 5, 25, 10, 30, 14, path, check=False, alpha=1, beta=0)
-        # 時刻リストにのっていない古いデータをダウンロード
-        time_this = self.time_begin
-        while time_this < self.time_end:
-            # 保存先
-            basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["jp_truecolor"], f'{basetime}.jpg')
-            self.draw_content(basetime, basetime, "REP", "ETC", 5, 25, 10, 30, 14, path, alpha=1, beta=0)
-            time_this += datetime.timedelta(minutes=10)
+        self.download_jp_common("REP", "ETC", 5, 25, 10, 30, 14, self.settings["path"]["jp_truecolor"], alpha=1, beta=0)
 
     def download_jp_cloudheight(self):  # ダウンロード(雲頂画像,日本域)
-        for time_this in self.jp_time_list:
-            # 保存先
-            path = os.path.join(self.settings["path"]["jp_cloudheight"], f'{time_this["basetime"]}.jpg')
-            self.draw_content(time_this["basetime"], time_this["validtime"], "SND", "ETC", 5, 25, 10, 30, 14, path, check=False)
-        # 時刻リストにのっていない古いデータをダウンロード
-        time_this = self.time_begin
-        while time_this < self.time_end:
-            # 保存先
-            basetime = time_this.strftime("%Y%m%d%H%M%S")
-            path = os.path.join(self.settings["path"]["jp_cloudheight"], f'{basetime}.jpg')
-            self.draw_content(basetime, basetime, "SND", "ETC", 5, 25, 10, 30, 14, path)
-            time_this += datetime.timedelta(minutes=10)
+        self.download_jp_common("SND", "ETC", 5, 25, 10, 30, 14, self.settings["path"]["jp_cloudheight"])
 
     def draw_content(self, basetime, validtime, band, prod, z, x0, y0, x1, y1, path, check=True, alpha=0.95, beta=0.05):  # 画像描画
         # ファイルが存在するなら何もしない

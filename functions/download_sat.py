@@ -9,12 +9,15 @@ def download_sat():
     print("#####Satellite Downloader#####")
     # SIGINTシグナルを受け取る
     signal.signal(signal.SIGINT, handler_sigint)
-    # クラス
-    t = DownloadSatellite()
-    # ダウンロード
-    t.download_jp_infrared()
-    t.download_jp_visible()
-    t.download_jp_watervapor()
-    t.download_jp_truecolor()
-    t.download_jp_cloudheight()
+    try:
+        # クラス
+        t = DownloadSatellite()
+        # ダウンロード
+        t.download_jp_infrared()
+        t.download_jp_visible()
+        t.download_jp_watervapor()
+        t.download_jp_truecolor()
+        t.download_jp_cloudheight()
+    except Exception as e:
+        exit_program(e, sys.exc_info())
     exit_program("完了しました")

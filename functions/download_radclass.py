@@ -34,6 +34,9 @@ class DownloadRadar(DownloadSatellite):
         self.time_end = datetime.datetime.strptime(self.jp_time_list[-1]["basetime"], "%Y%m%d%H%M%S")
         self.time_begin = self.time_end - datetime.timedelta(days=4)
 
+    def get_time_list(self, uri, text):
+        return super().get_time_list(uri, text)
+
     def download_jp_radar(self):  # ダウンロード(レーダー画像,日本域)
         for time_this in self.jp_time_list:
             # 保存先
@@ -49,7 +52,7 @@ class DownloadRadar(DownloadSatellite):
             self.draw_content(basetime, basetime, 6, 53, 22, 58, 27, path)
             time_this += datetime.timedelta(minutes=5)
 
-    def draw_content(self, basetime, validtime, z, x0, y0, x1, y1, path, check=True, alpha=1, beta=1):  # 画像作成
+    def draw_content(self, basetime, validtime, z, x0, y0, x1, y1, path, check=True):  # 画像作成
         # ファイルが存在するなら何もしない
         if not os.path.exists(path):
             image_list = np.empty((y1 - y0 + 1, x1 - x0 + 1), dtype=np.ndarray)
@@ -133,3 +136,7 @@ class DownloadRadar(DownloadSatellite):
         image_new = cv2.bitwise_or(self.image_map[rect[0, 1]:rect[2, 1], rect[0, 0]:rect[2, 0]], mask)
         image_new = cv2.bitwise_and(image_new, rgb)
         self.image_map[rect[0, 1]:rect[2, 1], rect[0, 0]:rect[2, 0]] = image_new
+
+    @classmethod
+    def download(cls, uri, path):
+        return super().download(uri, path)
