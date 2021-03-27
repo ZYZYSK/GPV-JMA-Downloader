@@ -39,6 +39,7 @@ def download_gsm():
             t.jp_850_tw_700_vv(settings["path"]["jp_850_tw_700_vv"])
             t.jp_850_eptw(settings["path"]["jp_850_eptw"])
             t.jp_surf_pwt(settings["path"]["jp_surf_pwt"])
+            t.np_500_ht(settings["path"]["np_500_ht"])
         except Exception as e:
             exit_program(e, sys.exc_info())
         time_start += datetime.timedelta(hours=6)
@@ -46,7 +47,7 @@ def download_gsm():
     if(settings["delete_tmp"]):
         shutil.rmtree(settings["path"]["tmp"])
     # 設定の更新
-    update_settings(settings, time_start)
+    # update_settings(settings, time_start)
     # 完了
     exit_program("完了しました")
 

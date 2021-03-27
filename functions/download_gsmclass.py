@@ -1,3 +1,4 @@
+from inspect import cleandoc
 import os
 import shutil
 import sys
@@ -12,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.util as cutil
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib import cm
@@ -41,9 +43,15 @@ class DownloadGSM:
     lon_min_jp = 60
     lon_max_jp = 200
     extent_jp = [100, 170, 10, 60]
+    # 図の範囲(北極中心)
+    lat_min_np = 0
+    lat_max_np = 90
+    extent_np = [-40, 320, 30, 90]
     # ランベルト正角円錐図法(日本域)
     mapcrs_jp = ccrs.LambertConformal(
         central_longitude=140, central_latitude=35, standard_parallels=(30, 60))
+    # 正距方位図法(北極中心)
+    mapcrs_np = ccrs.AzimuthalEquidistant(central_longitude=140, central_latitude=90)
     # 正距円筒図法
     datacrs = ccrs.PlateCarree()
     # 高度のシグマ
@@ -106,12 +114,33 @@ class DownloadGSM:
                         linestyle=':', color='grey')
         return ax_jp
 
+    def draw_map_np(self):  # 地図(北極中心)を作成
+        # 地図
+        ax_np = plt.subplot(111, projection=self.mapcrs_np)
+        # 地図の範囲を設定
+        ax_np.set_extent(self.extent_np, self.datacrs)
+        # 海岸線を追加
+        ax_np.add_feature(cfeature.COASTLINE.with_scale('50m'))
+        # 国境線を追加
+        ax_np.add_feature(cfeature.BORDERS.with_scale('50m'))
+        # 陸の塗りつぶし
+        ax_np.add_feature(cfeature.LAND, color='black', alpha=0.8)
+        # 格子線の大きさ、色、線種、間隔の設定(ここでは緯線と経線をひく)
+        ax_np.gridlines(xlocs=mticker.MultipleLocator(10),
+                        ylocs=mticker.MultipleLocator(10),
+                        linestyle=':', color='grey')
+        return ax_np
+
     def colorbar_jp(self, cf):  # カラーバー
         return plt.colorbar(cf, orientation='horizontal', fraction=0.05, shrink=0.95, aspect=100, pad=0)
 
-    # grib2ファイルから指定したデータを取得
+    # grib2ファイルから指定したデータを取得(日本域)
     def grib2_select_jp(self, shortName, level):
         return self.grib2.select(shortName=shortName, level=level)[0].data(lat1=self.lat_min_jp, lat2=self.lat_max_jp, lon1=self.lon_min_jp, lon2=self.lon_max_jp)
+    # grib2ファイルから指定したデータを取得(北極域)
+
+    def grib2_select_np(self, shortName, level):
+        return self.grib2.select(shortName=shortName, level=level)[0].data(lat1=self.lat_min_np, lat2=self.lat_max_np)
 
     def jp_300_hw(self, path):  # 300hPa高度/風(日本域)
         path_fig = os.path.join(path, self.time_str1 + '.png')
@@ -485,6 +514,50 @@ class DownloadGSM:
         plt.subplots_adjust(bottom=0.1, top=0.9)
         # 保存
         print(f'[{self.time_str2}] 地上気圧/風/気温（日本域)...{path_fig}'.format())
+        plt.savefig(path_fig)
+        # 閉じる
+        plt.close(fig=fig)
+
+    def np_500_ht(self, path):  # 500hPa高度/気温(北極中心)
+        path_fig = os.path.join(path, self.time_str1 + '.png')
+        if(os.path.exists(path_fig)): return
+        # 500hPa高度、緯度、経度の取得
+        height, lat, lon = self.grib2_select_np('gh', 500)
+        height = gaussian_filter(height, sigma=self.height_sigma)
+        # 500hPa気温の取得
+        temp, _, _ = self.grib2_select_np('t', 500)
+        temp = (temp * units.kelvin).to(units.celsius)
+        # 図の数、大きさを設定
+        fig = plt.figure(1, figsize=(self.fig_x, self.fig_x))
+        # 地図の描画
+        ax = self.draw_map_np()
+        # Cyclic
+        height_cyclic = np.empty((height.shape[0], height.shape[1] + 1))
+        temp_cyclic = np.empty((temp.shape[0], temp.shape[1] + 1))
+        lon_cyclic = np.empty((temp.shape[0], temp.shape[1] + 1))
+        lat_cyclic = np.empty((temp.shape[0], temp.shape[1] + 1))
+        for i in range(temp_cyclic.shape[0]):
+            height_cyclic[i, :], lon_cyclic[i, :] = cutil.add_cyclic_point(height[i, :], coord=lon[i, :])
+            temp_cyclic[i, :], lat_cyclic[i, :] = cutil.add_cyclic_point(temp[i, :], coord=lat[i, :])
+        # 温度の塗りつぶし
+        clevs_temp = np.arange(-48, 9, 3)
+        cf = ax.contourf(lon_cyclic, lat_cyclic, temp_cyclic, clevs_temp, extend='both', cmap='jet', transform=self.datacrs, alpha=0.9)
+        # 等温線
+        cg = ax.contour(lon_cyclic, lat_cyclic, temp_cyclic, clevs_temp, colors='black', linestyles='dashed', alpha=0.5, transform=self.datacrs)
+        plt.clabel(cg, levels=np.arange(-48, 9, 6), colors='black', fontsize=10, rightside_up=False, fmt='%d')
+        # 等高度線
+        cs = ax.contour(lon_cyclic, lat_cyclic, height_cyclic, np.arange(0, 8000, 60), colors='black', transform=self.datacrs)
+        plt.clabel(cs, levels=np.hstack((np.arange(0, 5700, 120), np.arange(5700, 6000, 60))), fmt='%d')
+        # カラーバーをつける
+        cbar = self.colorbar_jp(cf)
+        cbar.set_label('TEMP($^\circ$C)', fontsize=20)
+        # タイトルをつける
+        plt.title('500hPa: HEIGHT(M), TEMP($^\circ$C)', loc='left', fontsize=20)
+        plt.title(self.time_str2, loc='right', fontsize=20)
+        # 大きさの調整
+        plt.subplots_adjust(bottom=0.1, top=0.9)
+        # 保存
+        print(f'[{self.time_str2}] 500hPa高度/気温(北極中心)...{path_fig}'.format())
         plt.savefig(path_fig)
         # 閉じる
         plt.close(fig=fig)
