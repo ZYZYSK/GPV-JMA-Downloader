@@ -99,7 +99,10 @@ class DownloadRadar(DownloadSatellite):
                 for x in range(x0, x1 + 1):
                     image_list[y - y0][x - x0] = cv2.imread(super().download(f'https://cyberjapandata.gsi.go.jp/xyz/gmld_ptc2/{str(z)}/{str(x)}/{str(y)}.png', self.tmp_name))
             # 結合
-            image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            try:
+                image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            except cv2.error:
+                print(f'[{basetime}] 作成できませんでした')
             # 色を置換
             gray_continent = [150, 150, 150]
             gray_sea = [125, 125, 125]

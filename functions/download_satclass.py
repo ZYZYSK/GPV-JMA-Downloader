@@ -42,7 +42,7 @@ class DownloadSatellite:
         self.jp_time_list = self.get_time_list("https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_fd.json", "気象衛星画像")
         # 時刻表にのっていない時間
         self.time_end = datetime.datetime.strptime(self.jp_time_list[0]["basetime"], "%Y%m%d%H%M%S")
-        self.time_begin = self.time_end - datetime.timedelta(days=1)
+        self.time_begin = self.time_end - datetime.timedelta(days=7)
 
     def get_time_list(self, uri, text):  # 時刻リストを取得
         while True:
@@ -78,7 +78,7 @@ class DownloadSatellite:
         self.download_jp_common("B03", "ALBD", 5, 25, 10, 30, 14, self.settings["path"]["jp_visible"])
 
     def download_jp_watervapor(self):  # ダウンロード(水蒸気画像,日本域)
-        self.download_jp_common("B13", "TBB", 5, 25, 10, 30, 14, self.settings["path"]["jp_watervapor"])
+        self.download_jp_common("B08", "TBB", 5, 25, 10, 30, 14, self.settings["path"]["jp_watervapor"])
 
     def download_jp_truecolor(self):  # ダウンロード(トゥルーカラー再現画像,日本域)
         self.download_jp_common("REP", "ETC", 5, 25, 10, 30, 14, self.settings["path"]["jp_truecolor"], alpha=1, beta=0)
@@ -100,7 +100,10 @@ class DownloadSatellite:
                         return
                     image_list[y - y0][x - x0] = cv2.imread(self.download(uri, self.tmp_name))
             # 結合
-            image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            try:
+                image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            except cv2.error:
+                print(f'[{basetime}] 作成できませんでした')
             # マッピング
             image = cv2.addWeighted(src1=image, alpha=alpha, src2=self.image_map, beta=beta, gamma=0)
             # 文字書き込み
