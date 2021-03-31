@@ -1,0 +1,22 @@
+{
+    "path": {
+        "tmp": "/mnt/d/Weather/tmp_gsm",
+        "jp_300_hw": "/mnt/d/Weather/jp_300hw",
+        "jp_500_ht": "/mnt/d/Weather/jp_500ht",
+        "jp_500_hv": "/mnt/d/Weather/jp_500hv",
+        "jp_500_t_700_td": "/mnt/d/Weather/jp_500t700td",
+        "jp_850_ht": "/mnt/d/Weather/jp_850ht",
+        "jp_850_tw_700_vv": "/mnt/d/Weather/jp_850tw700vv",
+        "jp_850_eptw": "/mnt/d/Weather/jp_850eptw",
+        "jp_surf_pwt": "/mnt/d/Weather/jp_surf_pwt",
+        "np_500_ht": "/mnt/d/Weather/np_500ht"
+    },
+    "time_start": {
+        "year": 2021,
+        "month": 3,
+        "day": 30
+    },
+    "fig_x": 21,
+    "fig_y": 17,
+    "delete_tmp": false
+}

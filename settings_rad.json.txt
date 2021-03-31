@@ -1,0 +1,9 @@
+{
+    "path": {
+        "jp_radar": "/mnt/d/Weather/jp_radar"
+    },
+    "path_map": {
+        "jp": "/mnt/d/Weather/jp_rad.png"
+    },
+    "path_legend": "/mnt/d/Weather/legend_rad.png"
+}

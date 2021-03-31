@@ -1,0 +1,12 @@
+{
+    "path": {
+        "jp_infrared": "/mnt/d/Weather/jp_infrared",
+        "jp_visible": "/mnt/d/Weather/jp_visible",
+        "jp_watervapor": "/mnt/d/Weather/jp_watervapor",
+        "jp_truecolor": "/mnt/d/Weather/jp_truecolor",
+        "jp_cloudheight": "/mnt/d/Weather/jp_cloudheight"
+    },
+    "path_map": {
+        "j": "/mnt/d/Weather/j_map.jpg" 
+    }
+}

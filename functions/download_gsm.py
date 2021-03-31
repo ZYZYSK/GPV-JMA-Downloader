@@ -47,16 +47,16 @@ def download_gsm():
     if(settings["delete_tmp"]):
         shutil.rmtree(settings["path"]["tmp"])
     # 設定の更新
-    update_settings(settings, time_start)
+    update_settings(settings, time_start, "settings_gsm.json")
     # 完了
     exit_program("完了しました")
 
 
-def update_settings(settings, time_start):
+def update_settings(settings, time_start, settings_file_path):
     # 設定の更新
     settings["time_start"]["year"] = time_start.year
     settings["time_start"]["month"] = time_start.month
     settings["time_start"]["day"] = time_start.day
     with open("settings_gsm.json", "w") as fp:
-        json.dump(settings, fp)
+        json.dump(settings_file_path, fp)
     print("#####完了#####")

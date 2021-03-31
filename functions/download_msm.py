@@ -39,6 +39,6 @@ def download_msm():
     if(settings["delete_tmp"]):
         shutil.rmtree(settings["path"]["tmp"])
     # 設定の更新
-    update_settings(settings, time_start)
+    update_settings(settings, time_start, "settings_msm.json")
     # 完了
     exit_program("完了しました")
