@@ -57,6 +57,6 @@ def update_settings(settings, time_start, settings_file_path):
     settings["time_start"]["year"] = time_start.year
     settings["time_start"]["month"] = time_start.month
     settings["time_start"]["day"] = time_start.day
-    with open("settings_gsm.json", "w") as fp:
-        json.dump(settings_file_path, fp)
+    with open(settings_file_path, "w") as fp:
+        json.dump(settings, fp)
     print("#####完了#####")
