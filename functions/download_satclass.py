@@ -104,6 +104,7 @@ class DownloadSatellite:
                 image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
             except cv2.error:
                 print(f'[{basetime}] 作成できませんでした')
+                return
             # マッピング
             image = cv2.addWeighted(src1=image, alpha=alpha, src2=self.image_map, beta=beta, gamma=0)
             # 文字書き込み

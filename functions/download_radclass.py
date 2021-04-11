@@ -66,7 +66,11 @@ class DownloadRadar(DownloadSatellite):
                         return
                     image_list[y - y0][x - x0] = cv2.imread(super().download(uri, self.tmp_name), -1)
             # 結合
-            image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            try:
+                image = cv2.vconcat([cv2.hconcat(image_h) for image_h in image_list])
+            except cv2.error:
+                print(f'[{basetime}] 作成できませんでした')
+                return
             ###################################################################
             # マッピング
             ###################################################################
