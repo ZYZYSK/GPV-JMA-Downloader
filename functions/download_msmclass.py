@@ -22,7 +22,7 @@ class DownloadMSM(DownloadGSM):
         # ダウンロード済みの場合は何もしない
         if not os.path.exists(self.path_grib2):
             # ダウンロード先URI
-            uri_grib2 = f'http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/{self.time_this.strftime("%Y/%m/%d")}/Z__C_RJTD_{self.time_this.strftime("%Y%m%d%H%M%S")}_MSM_GPV_Rjp_Lsurf_FH00-15_grib2.bin'
+            uri_grib2 = f'http://database3.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original/{self.time_this.strftime("%Y/%m/%d")}/Z__C_RJTD_{self.time_this.strftime("%Y%m%d%H%M%S")}_MSM_GPV_Rjp_Lsurf_FH00-15_grib2.bin'
             # ダウンロード試行
             self.download_grib2_sub(uri_grib2)
         self.grib2 = grib.open(self.path_grib2)
